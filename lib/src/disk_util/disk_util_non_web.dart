@@ -1,19 +1,20 @@
 import 'dart:io';
 import 'disk_util.dart';
 
- DiskUtil getDiskUtil() => DiskUtilNonWeb();
+DiskUtil getDiskUtil() => DiskUtilNonWeb();
 
 class DiskUtilNonWeb extends DiskUtil {
-
-   @override
+  @override
   write(String filename, String contents) async {
     var dir = _getTempDir();
-    if (!await dir.exists()) {
-      await dir.create();
-    }
+    try {
+      if (!await dir.exists()) {
+        await dir.create();
+      }
 
-    var file = File("${dir.path}/$filename");
-    await file.writeAsString(contents);
+      var file = File("${dir.path}/$filename");
+      await file.writeAsString(contents);
+    } catch (_) {}
   }
 
   @override
