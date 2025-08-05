@@ -52,15 +52,13 @@ class StatsigLogger {
     }
   }
 
-  void logConfigExposure(
-      String configName,
-      StatsigUser user,
-      EvaluationDetails details,
-      Map? res) {
-    var key = configName + (res == null ? "" : res["rule_id"] ?? "") + details.reason;
+  void logConfigExposure(String configName, StatsigUser user,
+      EvaluationDetails details, Map? res) {
+    var key =
+        configName + (res == null ? "" : res["rule_id"] ?? "") + details.reason;
     if (!shouldDedupe(key)) {
-      enqueue(StatsigEvent.createConfigExposure(
-          user, configName, details, res));
+      enqueue(
+          StatsigEvent.createConfigExposure(user, configName, details, res));
     }
   }
 
@@ -153,12 +151,15 @@ class StatsigLogger {
     if (!contents.startsWith("[") || !contents.endsWith("]")) {
       return;
     }
-
-    var events = json.decode(contents);
-    if (events is List) {
-      for (var element in events) {
-        _queue.add(StatsigEvent.fromJson(element));
+    try {
+      var events = json.decode(contents);
+      if (events is List) {
+        for (var element in events) {
+          _queue.add(StatsigEvent.fromJson(element));
+        }
       }
+    } catch (e) {
+      return;
     }
 
     if (_queue.isNotEmpty) {
