@@ -16,6 +16,9 @@ import 'src/statsig_layer.dart';
 import 'src/statsig_options.dart';
 import 'src/statsig_user.dart';
 
+export 'src/probe.dart';
+import 'src/probe.dart';
+
 /// The main interface to interact with the Statsig SDK
 class Statsig {
   static StatsigClient? _clientInstance;
@@ -24,9 +27,9 @@ class Statsig {
   ///
   /// Optionally provide [StatsigUser] and/or [StatsigOptions] to configure the SDK.
   static Future<void> initialize(String sdkKey,
-      [StatsigUser? user, StatsigOptions? options]) async {
+      [StatsigUser? user, StatsigOptions? options, StatsigProbe? probe]) async {
     _clientInstance =
-        await StatsigClient.make(sdkKey, user, options ?? StatsigOptions());
+        await StatsigClient.make(sdkKey, user, options ?? StatsigOptions(), probe);
   }
 
   /// Closes out the SDK flushing any pending events.
@@ -41,8 +44,8 @@ class Statsig {
   }
 
   /// Informs the SDK that the user has changed and that values should be refetched from Statsig.
-  static Future updateUser(StatsigUser user) async {
-    await _clientInstance?.updateUser(user);
+  static Future updateUser(StatsigUser user, [StatsigProbe? probe]) async {
+    await _clientInstance?.updateUser(user, probe);
   }
 
   /// Returns the [FeatureGate] value for the current user.

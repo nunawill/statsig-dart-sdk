@@ -15,6 +15,8 @@ import 'statsig_event.dart';
 import 'dynamic_config.dart';
 import 'evaluation_details.dart';
 
+import 'probe.dart';
+
 extension NormalizedStatsigUser on StatsigUser {
   StatsigUser normalize(StatsigOptions? options) {
     var json = this.toJsonWithPrivateAttributes();
@@ -49,11 +51,11 @@ class StatsigClient {
   }
 
   static Future<StatsigClient> make(String sdkKey,
-      [StatsigUser? user, StatsigOptions? options]) async {
+      [StatsigUser? user, StatsigOptions? options, StatsigProbe? probe]) async {
     await StatsigMetadata.loadStableID(options?.overrideStableID);
 
     var client = StatsigClient._make(sdkKey, user?.normalize(options), options);
-    await client._fetchInitialValues();
+    await client._fetchInitialValues(probe: probe);
     return client;
   }
 
@@ -65,8 +67,9 @@ class StatsigClient {
     await _logger.flush();
   }
 
-  Future updateUser(StatsigUser user) async {
+  Future updateUser(StatsigUser user, [StatsigProbe? probe]) async {
     var isSameUser = user.getCacheKey() == _user.getCacheKey();
+    probe?.add("Client: updating user (same: $isSameUser)");
     if (!isSameUser) {
       _store.clear();
       _logger.clear();
@@ -74,7 +77,7 @@ class StatsigClient {
     _user = user.normalize(_options);
     StatsigMetadata.regenSessionID();
 
-    await _fetchInitialValues(shouldLoadCache: !isSameUser);
+    await _fetchInitialValues(shouldLoadCache: !isSameUser, probe: probe);
   }
 
   bool checkGate(String gateName,
@@ -205,25 +208,29 @@ class StatsigClient {
     return;
   }
 
-  Future<void> _fetchInitialValues({bool shouldLoadCache = true}) async {
+  Future<void> _fetchInitialValues({bool shouldLoadCache = true, StatsigProbe? probe}) async {
+    probe?.add("Client: initializing");
     if (shouldLoadCache) {
-      await _store.load(_user);
+      await _store.load(_user, probe);
+      probe?.add("Client: cache loaded (${_store.reason.name})");
     }
-    var res = await _network.initialize(_user, _store);
+    var res = await _network.initialize(_user, _store, probe);
     if (res is Map) {
       if (res["hashed_sdk_key_used"] != null) {
         if (res["hashed_sdk_key_used"] != Utils.djb2(_sdkKey)) {
           return;
         }
       }
+      probe?.add("Client: has updates: ${res["has_updates"]}");
       if (res["has_updates"] == true) {
-        _store.save(_user, res);
+        _store.save(_user, res, probe);
       } else if (res["has_updates"] == false) {
         _store.reason = EvalReason.NetworkNotModified;
       }
     }
 
     _store.finalize();
+    probe?.add("Client: network initialized (${_store.reason.name})");
   }
 
   String _getHash(String input) {

@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'disk_util/disk_util.dart';
 import 'statsig_user.dart';
 
+import 'probe.dart';
+
 enum EvalReason {
   Loading,
   NetworkNotModified,
@@ -48,9 +50,12 @@ class InternalStore {
     return fullChecksum;
   }
 
-  Future<void> load(StatsigUser user) async {
-    var store = await _read(user);
+  Future<void> load(StatsigUser user, [StatsigProbe? probe]) async {
+    probe?.add("Store: loading");
+    
+    var store = await _read(user, probe);
     if (store == null) {
+      probe?.add("Store: not loaded");
       return;
     }
 
@@ -65,6 +70,8 @@ class InternalStore {
     receivedAt = store["receivedAt"] ?? 0;
     fullChecksum = store["fullChecksum"];
     reason = EvalReason.Cache;
+
+    probe?.add("Store: loaded");
   }
 
   finalize() {
@@ -73,7 +80,9 @@ class InternalStore {
     }
   }
 
-  Future<void> save(StatsigUser user, Map? response) async {
+  Future<void> save(StatsigUser user, Map? response, [StatsigProbe? probe]) async {
+    probe?.add("Store: saving");
+
     featureGates = response?["feature_gates"] ?? {};
     dynamicConfigs = response?["dynamic_configs"] ?? {};
     layerConfigs = response?["layer_configs"] ?? {};
@@ -99,7 +108,7 @@ class InternalStore {
           "hash_used": hashUsed,
           "receivedAt": receivedAt,
           "fullChecksum": fullChecksum,
-        }));
+        }), probe);
   }
 
   void clear() {
@@ -116,18 +125,27 @@ class InternalStore {
     fullChecksum = null;
   }
 
-  Future<void> _write(StatsigUser user, String content) async {
-    String key = user.getCacheKey();
-    await DiskUtil.instance.write("$key.statsig_store", content);
+  Future<void> _write(StatsigUser user, String content, [StatsigProbe? probe]) async {
+    probe?.add("Store: writing");
+    try {
+      String key = user.getCacheKey();
+      await DiskUtil.instance.write("$key.statsig_store", content);
+    } catch (e) {
+      probe?.add("Store: write error: $e");
+      rethrow;
+    }
   }
 
-  Future<Map?> _read(StatsigUser user) async {
+  Future<Map?> _read(StatsigUser user, [StatsigProbe? probe]) async {
+    probe?.add("Store: reading");
     try {
       String key = user.getCacheKey();
       var content = await DiskUtil.instance.read("$key.statsig_store");
       var data = json.decode(content);
       return data is Map ? data : null;
-    } catch (_) {}
+    } catch (e) {
+      probe?.add("Store: read error: $e");
+    }
     return null;
   }
 }

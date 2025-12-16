@@ -9,6 +9,8 @@ import 'statsig_metadata.dart';
 import 'statsig_options.dart';
 import 'statsig_user.dart';
 
+import 'probe.dart';
+
 const defaultLoggingHost = 'https://statsigapi.net/v1';
 const defaultHost = 'https://featuregates.org/v1';
 
@@ -40,7 +42,7 @@ class NetworkService {
     };
   }
 
-  Future<Map?> initialize(StatsigUser user, InternalStore store) async {
+  Future<Map?> initialize(StatsigUser user, InternalStore store, [StatsigProbe? probe]) async {
     var url = Uri.parse(_host + '/initialize');
     return await _post(
             url,
@@ -53,9 +55,10 @@ class NetworkService {
               "full_checksum": store.getFullChecksum(user),
             },
             3,
-            initialBackoffSeconds)
+            initialBackoffSeconds, probe)
         .timeout(Duration(seconds: _options.initTimeout), onTimeout: () {
       print("[Statsig]: Initialize timed out.");
+      probe?.add("Network: initialize timed out");
       return null;
     });
   }
@@ -71,7 +74,8 @@ class NetworkService {
   }
 
   Future<Map?> _post(Uri url,
-      [Map? body, int retries = 0, int backoff = 1]) async {
+      [Map? body, int retries = 0, int backoff = 1, StatsigProbe? probe]) async {
+    probe?.add("Network: posting to $url");
     String data = json.encode(body);
     try {
       var headers = {
@@ -79,12 +83,14 @@ class NetworkService {
         "STATSIG-CLIENT-TIME": DateTime.now().millisecondsSinceEpoch.toString(),
       };
       var response = await http.post(url, headers: headers, body: data);
+      probe?.add("Network: response status code: ${response.statusCode}");
 
       if (response.statusCode == 204) {
         return {"has_updates": false};
       }
 
       if (response.statusCode >= 200 && response.statusCode <= 299) {
+        probe?.add("Network: response body length: ${response.bodyBytes.length}");
         return response.bodyBytes.isEmpty
             ? {}
             : jsonDecode(utf8.decode(response.bodyBytes)) as Map;
@@ -92,7 +98,9 @@ class NetworkService {
         await Future.delayed(Duration(seconds: backoff));
         return await _post(url, body, retries - 1, backoff * 2);
       }
-    } catch (_) {}
+    } catch (e) {
+      probe?.add("Network: error: $e");
+    }
 
     return null;
   }
